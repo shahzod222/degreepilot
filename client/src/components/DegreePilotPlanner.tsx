@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import "./DegreePilotPlanner.css";
+import "./DegreePilotSample.css";
 
 type ProposedCourse = {
   courseId: string;
@@ -135,6 +136,8 @@ const apiBase = (
 ).replace(/\/$/, "");
 // Vercel Functions have a 4.5 MB request-body limit. Leave headroom for multipart overhead.
 const maxPdfBytes = 4 * 1024 * 1024;
+// Vite serves files in /public from the site root (including configured base paths).
+const samplePdfUrl = `${import.meta.env.BASE_URL}sample-degreeworks.pdf`;
 const seasonOrder: Record<string, number> = {
   Winter: 0,
   Spring: 1,
@@ -160,6 +163,7 @@ export default function DegreePilotPlanner() {
   const [showPassword, setShowPassword] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [sampleLoading, setSampleLoading] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [error, setError] = useState("");
   const [result, setResult] = useState<PlanResponse | null>(null);
@@ -242,12 +246,42 @@ export default function DegreePilotPlanner() {
   function onDrop(event: DragEvent<HTMLDivElement>) {
     event.preventDefault();
     setDragging(false);
-    if (!loading) choosePdf(event.dataTransfer.files[0] ?? null);
+    if (!loading && !sampleLoading)
+      choosePdf(event.dataTransfer.files[0] ?? null);
+  }
+
+  async function useSamplePdf() {
+    if (loading || sampleLoading) return;
+    setSampleLoading(true);
+    setError("");
+    try {
+      const response = await fetch(samplePdfUrl);
+      if (!response.ok)
+        throw new Error(
+          `Could not load the sample PDF (HTTP ${response.status}).`,
+        );
+
+      const blob = await response.blob();
+      if (!blob.size) throw new Error("The sample PDF is empty.");
+
+      // Use the exact validation and state handling as an uploaded PDF.
+      const sample = new File([blob], "sample-degreeworks.pdf", {
+        type: "application/pdf",
+      });
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      choosePdf(sample);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Could not load the sample PDF.",
+      );
+    } finally {
+      setSampleLoading(false);
+    }
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!pdf || loading) return;
+    if (!pdf || loading || sampleLoading) return;
     setLoading(true);
     setError("");
     setResult(null);
@@ -354,7 +388,7 @@ export default function DegreePilotPlanner() {
           className={`dp-upload ${dragging ? "dp-upload-dragging" : ""} ${pdf ? "dp-upload-ready" : ""}`}
           onDragOver={(event) => {
             event.preventDefault();
-            if (!loading) setDragging(true);
+            if (!loading && !sampleLoading) setDragging(true);
           }}
           onDragLeave={(event) => {
             if (
@@ -370,7 +404,7 @@ export default function DegreePilotPlanner() {
             className="dp-file-native"
             type="file"
             accept=".pdf,application/pdf"
-            disabled={loading}
+            disabled={loading || sampleLoading}
             onChange={(event) => choosePdf(event.target.files?.[0] ?? null)}
             aria-label="Upload DegreeWorks PDF"
           />
@@ -391,7 +425,7 @@ export default function DegreePilotPlanner() {
                   type="button"
                   className="dp-ghost-button"
                   onClick={() => fileInputRef.current?.click()}
-                  disabled={loading}
+                  disabled={loading || sampleLoading}
                 >
                   Replace
                 </button>
@@ -401,7 +435,7 @@ export default function DegreePilotPlanner() {
                   aria-label="Remove PDF"
                   title="Remove PDF"
                   onClick={() => choosePdf(null)}
-                  disabled={loading}
+                  disabled={loading || sampleLoading}
                 >
                   <Icon name="x" size={18} />
                 </button>
@@ -419,7 +453,7 @@ export default function DegreePilotPlanner() {
                   type="button"
                   className="dp-text-button"
                   onClick={() => fileInputRef.current?.click()}
-                  disabled={loading}
+                  disabled={loading || sampleLoading}
                 >
                   browse your files
                 </button>
@@ -428,6 +462,40 @@ export default function DegreePilotPlanner() {
             </div>
           )}
         </div>
+
+        <section className="dp-sample" aria-label="Sample DegreeWorks PDF">
+          <div className="dp-sample-divider">
+            <span>OR TRY A SAMPLE</span>
+          </div>
+          <div className="dp-sample-panel">
+            <div className="dp-sample-intro">
+              <span className="dp-sample-icon" aria-hidden="true">
+                <Icon name="file" size={21} />
+              </span>
+              <div>
+                <strong>Don't have a DegreeWorks PDF?</strong>
+                <p>Explore DegreePilot with an example academic audit.</p>
+              </div>
+            </div>
+            <div className="dp-sample-actions">
+              <button
+                type="button"
+                className="dp-sample-button"
+                disabled={loading || sampleLoading}
+                onClick={() => void useSamplePdf()}
+              >
+                <Icon name="arrow" size={17} />
+                {sampleLoading ? "Loading sample…" : "Use sample PDF"}
+              </button>
+              <a href={samplePdfUrl} target="_blank" rel="noopener noreferrer">
+                <Icon name="eye" size={16} /> Preview sample
+              </a>
+              <a href={samplePdfUrl} download="DegreePilot-Sample.pdf">
+                Download PDF
+              </a>
+            </div>
+          </div>
+        </section>
 
         <div className="dp-settings-heading">
           <h3>Planning preferences</h3>
@@ -538,7 +606,7 @@ export default function DegreePilotPlanner() {
           <button
             className="dp-submit"
             type="submit"
-            disabled={!pdf || loading}
+            disabled={!pdf || loading || sampleLoading}
           >
             {loading ? (
               <>

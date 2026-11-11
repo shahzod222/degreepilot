@@ -1,0 +1,120 @@
+/* Sample controls only. Keeps the existing .dp-upload / planner styling intact. */
+.dp-sample {
+  margin: 19px 0 24px;
+}
+.dp-sample-divider {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  margin: 0 0 16px;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  font-weight: 750;
+  opacity: 0.65;
+}
+.dp-sample-divider::before,
+.dp-sample-divider::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid currentColor;
+  opacity: 0.2;
+}
+.dp-sample-panel {
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 13px;
+  background: rgba(148, 163, 184, 0.055);
+  padding: 16px;
+}
+.dp-sample-intro {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+.dp-sample-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  background: rgba(86, 122, 193, 0.11);
+  color: #5680d9;
+}
+.dp-sample-intro strong {
+  font-size: 14px;
+  font-weight: 700;
+  display: block;
+}
+.dp-sample-intro p {
+  font-size: 12px;
+  line-height: 1.5;
+  opacity: 0.72;
+  margin: 3px 0 0;
+}
+.dp-sample-actions {
+  margin: 13px 0 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 17px;
+}
+.dp-sample-button {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  gap: 7px;
+  min-height: 39px;
+  border: 1px solid #315fe2;
+  padding: 9px 15px;
+  border-radius: 9px;
+  color: white;
+  background: #315fe2;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+  transition:
+    background 0.16s,
+    transform 0.16s;
+}
+.dp-sample-button:hover:not(:disabled) {
+  background: #254fca;
+}
+.dp-sample-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.dp-sample-actions a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: inherit;
+  opacity: 0.8;
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.dp-sample-actions a:hover {
+  opacity: 1;
+}
+.dp-sample-actions :is(button, a):focus-visible {
+  outline: 3px solid #6698ff;
+  outline-offset: 3px;
+}
+@media (max-width: 520px) {
+  .dp-sample-panel {
+    padding: 14px;
+  }
+  .dp-sample-actions {
+    gap: 11px 15px;
+  }
+  .dp-sample-button {
+    flex: 1 1 100%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dp-sample-button {
+    transition: none;
+  }
+}
