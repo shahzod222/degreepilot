@@ -1,6 +1,7 @@
 import { db } from "../db/pool.ts";
 import type { AcademicAudit } from "./audit-schema.ts";
 import type { AiPlan } from "./ai-plan-schema.ts";
+import { isOverallDegreeCredits } from "./graduation-coverage.ts";
 
 export interface CourseCandidate {
   courseId: string;
@@ -39,6 +40,7 @@ export async function getRangeCourseCandidates(
       .map((c) => norm(c.courseId)) ?? []),
   ]);
   const output: CourseCandidate[] = [];
+  const potentialDegreeElectives = new Map<string, CourseCandidate>();
   // Give the model catalog credits for explicit courses too; otherwise it cannot
   // reason accurately about how a selected core/choose-N course affects the total.
   const specified = audit.requirements.filter(
@@ -147,6 +149,62 @@ export async function getRangeCourseCandidates(
         a.courseId.localeCompare(b.courseId),
     );
     output.push(...possible.slice(0, 20));
+    // Existing audit-mentioned course ranges are potential extra credits,
+    // not proof that the institution will allow those credits to count.
+    for (const candidate of possible) {
+      if (candidate.credits === null || candidate.credits <= 0) continue;
+      if (explicitIds.includes(candidate.courseId)) continue;
+      potentialDegreeElectives.set(candidate.courseId, candidate);
+    }
+  }
+  // Complex requirements may explicitly name courses even when the
+  // category itself cannot be reduced to a single choose-N rule.
+  const complex = audit.requirements.filter(
+    (req) => req.status === "still_needed" && req.rule.kind === "complex",
+  );
+  const complexIds = complex.flatMap((req) => {
+    const source = `${req.originalText} ${req.rule.kind === "complex" ? req.rule.description : ""}`;
+    const matches = [...source.toUpperCase().matchAll(/\b([A-Z]{2,7})\s+(\d{3,4}[A-Z]?)\b/g)];
+    return matches.map((m) => ({ id: norm(`${m[1]} ${m[2]}`), reqId: req.id }));
+  }).filter((candidate) => !unavailable.has(candidate.id));
+  if (complexIds.length) {
+    const ids = [...new Set(complexIds.map((c) => c.id))];
+    const result = await db.query<{
+      id: string; title: string; credits: string | number | null;
+    }>(
+      "SELECT id, title, credits FROM public.courses WHERE id = ANY($1::text[])",
+      [ids],
+    );
+    const known = new Map(result.rows.map((row) => [norm(row.id), row]));
+    for (const c of complexIds) {
+      const row = known.get(c.id);
+      if (!row) continue;
+      const credits = row.credits === null ? null : Number(row.credits);
+      output.push({
+        courseId: c.id,
+        title: row.title,
+        credits: credits !== null && Number.isFinite(credits) && credits > 0 ? credits : null,
+        forRequirementId: c.reqId,
+      });
+    }
+  }
+
+  const totalDegree = audit.requirements.find(
+    (req) =>
+      req.status === "still_needed" &&
+      req.rule.kind === "credit_minimum" &&
+      isOverallDegreeCredits(req) &&
+      req.rule.applied !== null &&
+      req.rule.required > req.rule.applied,
+  );
+  if (totalDegree) {
+    // A small, bounded list of real catalog entries from ranges mentioned
+    // in this audit. Each additional recommendation must stay provisional.
+    const candidates = [...potentialDegreeElectives.values()]
+      .sort((a, b) => (b.credits ?? 0) - (a.credits ?? 0) || a.courseId.localeCompare(b.courseId))
+      .slice(0, 15);
+    for (const candidate of candidates)
+      output.push({ ...candidate, forRequirementId: totalDegree.id });
   }
   return output;
 }
