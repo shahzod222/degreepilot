@@ -203,7 +203,41 @@ assert.equal(validate(clone()).canDisplayProvisionalPlan, true);
     validate(p).warnings.some((x) => x.code === "UNVERIFIED_REQUIREMENT_MATCH"),
   );
 }
-console.log("PASS: 11 offline plan-validator scenarios (no OpenAI request)");
+// Model instructions cannot bypass semester-specific caps.
+{
+  const seasonalPrefs: PlanningPreferences = {
+    ...prefs,
+    startTerm: { season: "Summer", year: 2027 },
+    maxCoursesPerSemester: 5,
+    includeSummer: true,
+    includeWinter: true,
+  };
+  const seasons: AiPlan = {
+    ...base,
+    semesters: [
+      { season: "Summer", year: 2027, courses: [] },
+      { season: "Fall", year: 2027, courses: [] },
+      { season: "Winter", year: 2028, courses: [] },
+      { season: "Spring", year: 2028, courses: [] },
+      { season: "Summer", year: 2028, courses: [] },
+      { season: "Fall", year: 2028, courses: [] },
+      { season: "Winter", year: 2029, courses: [] },
+      { season: "Spring", year: 2029, courses: [] },
+    ],
+  };
+  const code = (id: string) => ({ courseId: id, requirementIds: ["req"], reason: "Test", prerequisiteNote: "Test" });
+  seasons.semesters[0].courses = [code("CISC 3140"), code("CISC 3142"), code("CISC 3320")];
+  assert(validateProposedPlan(seasons, audit, seasonalPrefs).errors.some((e) => e.code === "COURSE_LIMIT"));
+  seasons.semesters[0].courses.pop();
+  seasons.semesters[2].courses = [code("CISC 3140"), code("CISC 3142"), code("CISC 3320")];
+  assert(validateProposedPlan(seasons, audit, seasonalPrefs).errors.some((e) => e.code === "COURSE_LIMIT"));
+  seasons.semesters[2].courses = [];
+  seasons.semesters[1].courses = Array.from({length: 5}, (_, n) => code(`TEST ${n}`));
+  assert(!validateProposedPlan(seasons, audit, seasonalPrefs).errors.some((e) => e.code === "COURSE_LIMIT"));
+  seasons.semesters[1].courses.push(code("TEST 5"));
+  assert(validateProposedPlan(seasons, audit, seasonalPrefs).errors.some((e) => e.code === "COURSE_LIMIT"));
+}
+console.log("PASS: original validator scenarios + seasonal max-2/max-5 caps (no OpenAI request)");
 {
   const p = clone();
   p.semesters[0].courses[0] = {
