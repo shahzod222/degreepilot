@@ -118,7 +118,7 @@ assert(
 assert.equal(lastScheduledTermIndex(improvedEarly), 0);
 const feedback = actionablePlanFeedback(original, origV, prefs);
 assert(feedback.some((f) => f.requirementId === "elective"));
-assert(feedback.some((f) => f.code === "CREDIT_SHORTFALL"));
+assert(feedback.some((f) => f.code === "DEGREE_CREDIT_SHORTFALL"));
 const delayed = make([[], [], [core, elective], []]);
 const delayFeedback = actionablePlanFeedback(delayed, earlyV, prefs);
 assert(delayFeedback.some((f) => f.code === "POSSIBLY_DELAYED_SCHEDULE"));
@@ -131,6 +131,28 @@ assert(
     { plan: invalid, validation: invalidV },
   ),
 );
+{
+  const shortfallAudit: AcademicAudit = structuredClone(audit);
+  const total = shortfallAudit.requirements.find((r) => r.id === "total")!;
+  if (total.rule.kind !== "credit_minimum") throw new Error("Expected credits");
+  total.rule.applied = 110;
+  total.rule.remaining = 10;
+  const partial = validateProposedPlan(improvedEarly, shortfallAudit, prefs, credits, true);
+  assert.equal(partial.graduationCoverage.degreeCredits?.remainingIfKnown, 3);
+  const filler = {
+    courseId: "CISC 3800",
+    requirementIds: ["total"],
+    reason: "Catalog-backed potential credits; eligibility unverified",
+    prerequisiteNote: "Verify",
+  };
+  const full = make([[core, elective, filler], [], [], []]);
+  const withFiller = validateProposedPlan(full, shortfallAudit, prefs, new Map([...credits, ["CISC 3800", 3]]), true, [
+    { courseId: "CISC 3800", title: "Catalog elective", credits: 3, forRequirementId: "total" },
+  ]);
+  assert.equal(withFiller.errors.length, 0);
+  assert.equal(withFiller.graduationCoverage.degreeCredits?.remainingIfKnown, 0);
+  assert(isRevisedPlanBetter({ plan: improvedEarly, validation: partial }, { plan: full, validation: withFiller }));
+}
 console.log(
-  "PASS: missing elective + credit gap, earlier completion preference, invalid revision rejection",
+  "PASS: missing elective + credit gap, catalog-backed filler, earlier completion and invalid revision rejection",
 );
