@@ -9,7 +9,9 @@ Instead of suggesting random courses, it uses the student's actual audit, a cour
 ## Features
 
 - **PDF-to-requirements:** Extracts courses, completed/in-progress work, credit totals, choices, and academic rules from a DegreeWorks PDF.
-- **Personalized scheduling:** Recommends one schedule based on remaining requirements, a **1–4 course-per-term** preference and optional Summer/Winter sessions. The start term is selected automatically.
+- **Personalized scheduling:** Recommends one schedule based on remaining requirements, a **1–5 course Fall/Spring limit** (Summer/Winter capped at 2) and optional Summer/Winter sessions. The start term is selected automatically.
+- **Semester-specific caps:** Fall/Spring use 1–5 selected courses; enabled Summer/Winter sessions allow up to 2 each, or the smaller selected cap.
+- **Credit-gap attempts:** The AI can use catalog-backed, audit-aligned additional-elective candidates to try to cover a shortfall, while leaving their degree/category eligibility explicitly unverified.
 - **Earlier completion first:** Uses the two-year period as a *maximum planning horizon*, not a requirement to spread out courses.
 - **Requirement and credit checks:** Flags missing courses, projected credit shortfalls, duplicate selections, and requirements that cannot yet be confirmed.
 - **Database-backed checks:** Uses PostgreSQL course credits and available prerequisite records; incomplete rules are labeled **unknown**, not assumed satisfied.
