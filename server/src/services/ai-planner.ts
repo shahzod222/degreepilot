@@ -1,4 +1,4 @@
-import OpenAI from "openai";
+import { OpenAI } from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
 import type { AcademicAudit } from "./audit-schema.ts";
 import type { AuditValidationReport } from "./audit-validator.ts";
