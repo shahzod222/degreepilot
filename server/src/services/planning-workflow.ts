@@ -108,7 +108,7 @@ export async function generateReviewedTwoYearPlan(
     { checklist, catalogCandidates: candidates },
   );
   let current = initial.plan;
-  let check = await deps.checkWithDb(current, audit, preferences);
+  let check = await deps.checkWithDb(current, audit, preferences, candidates);
   validateCatalogSelections(current, audit, candidates, check);
   let tokenInput = initial.tokenUsage.input ?? 0;
   let tokenOutput = initial.tokenUsage.output ?? 0;
@@ -117,6 +117,7 @@ export async function generateReviewedTwoYearPlan(
     check.validation,
     preferences,
     check.prerequisites,
+    candidates,
   );
   let attempted = false;
   let accepted = false;
@@ -143,6 +144,7 @@ export async function generateReviewedTwoYearPlan(
         revised.plan,
         audit,
         preferences,
+        candidates,
       );
       validateCatalogSelections(revised.plan, audit, candidates, revisedCheck);
       if (
