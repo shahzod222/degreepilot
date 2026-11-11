@@ -11,6 +11,13 @@ export const PlanningPreferencesSchema = z.object({
 });
 export type PlanningPreferences = z.infer<typeof PlanningPreferencesSchema>;
 
+// The browser only chooses workload and optional sessions. The server
+// derives startTerm from the calendar and the extracted DegreeWorks audit.
+export const PlanningOptionsSchema = PlanningPreferencesSchema.omit({
+  startTerm: true,
+});
+export type PlanningOptions = z.infer<typeof PlanningOptionsSchema>;
+
 // Every proposed course must be tied to specific IDs extracted from the audit.
 // This is a proposed *schedule*, not a prediction of final graduation eligibility.
 export const AiPlanSchema = z.object({
