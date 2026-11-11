@@ -3,6 +3,7 @@ import { zodTextFormat } from "openai/helpers/zod";
 import type { AcademicAudit } from "./audit-schema.ts";
 import {
   AiPlanSchema,
+  termCourseLimit,
   allowedTwoYearTerms,
   type AiPlan,
   type PlanningPreferences,
@@ -29,7 +30,8 @@ Your primary goals, in order:
 (2) Address the degree-credit minimum IF supported by verified catalog credit values and audit counting rules.
 (3) If possible, place the last necessary course in the earliest feasible semester. NEVER spread
     coursework into later semesters merely for aesthetic workload balance.
-(4) Respect max courses per term, do not repeat any completed/IP course, and do not violate
+(4) Respect perTermCourseLimits (Fall/Spring 1-5 selected, Summer/Winter at
+    most 2 or the selected lower limit), do not repeat completed/IP courses, and do not violate
     prerequisite sequencing. A prerequisite course in the same semester does not count as prior.
 (5) Preserve warnings about pending IP grades, residency, unsupported credit allocation,
     course availability, and advisor approval. They cannot be "fixed" by asserting success.
@@ -40,8 +42,13 @@ You may choose ANY range course only from the PROVIDED database candidate list
 with the matching forRequirementId. The database is a catalog, not approval of eligibility. Those are
 existing course IDs with catalog credits, but NOT guaranteed permitted, offered, or eligible.
 Do not invent any course, credit value, prerequisite, exception, or transfer/residency policy.
-Do not add an unrelated general elective solely to reach 120 if the audit prohibits general
-extra electives; instead explicitly disclose the unresolved gap. The audit's applied credits
+If the projected degree-credit total still falls short after all mandatory
+slots, try distinct, existing catalogCandidates linked to the overall degree
+credit minimum (as few as needed). Check whether any audit policy prohibits
+such extras. Treat counting and eligibility as unverified. For complex
+requirements such as College Option, try explicitly audit-grounded candidates
+from the provided catalog. If no candidate is defensible, disclose the issue
+instead of inventing one. The audit's applied credits
 already INCLUDE in-progress courses—never add them a second time.
 If a problem cannot be solved from the evidence, keep it visible in limitations. Be explicit.
 Do not claim degree completion or official graduation approval. Do not include student PII.
@@ -69,6 +76,9 @@ export async function reviseAiPlanOnce(args: {
           audit: args.audit,
           preferences: args.preferences,
           permittedTerms: allowedTwoYearTerms(args.preferences),
+          perTermCourseLimits: allowedTwoYearTerms(args.preferences).map((term) => ({
+            ...term, maxCourses: termCourseLimit(term, args.preferences),
+          })),
           currentPlan: args.currentPlan,
           actionableValidationFindings: args.findings,
           degreeCreditProjection:
