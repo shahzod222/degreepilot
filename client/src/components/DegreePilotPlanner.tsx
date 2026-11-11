@@ -501,7 +501,7 @@ export default function DegreePilotPlanner() {
         </div>
         <div className="dp-settings-grid">
           <label className="dp-field" htmlFor="dp-limit">
-            Courses per term
+            Max courses per Fall/Spring term
             <select
               id="dp-limit"
               value={maxCourses}
@@ -511,7 +511,7 @@ export default function DegreePilotPlanner() {
                 invalidateResult();
               }}
             >
-              {[1, 2, 3, 4].map((n) => (
+              {[1, 2, 3, 4, 5].map((n) => (
                 <option value={n} key={n}>
                   {n} {n === 1 ? "course" : "courses"}
                 </option>
@@ -559,7 +559,7 @@ export default function DegreePilotPlanner() {
                 invalidateResult();
               }}
             />
-            <span>Include Summer</span>
+            <span>Include Summer (max 2 courses)</span>
           </label>
           <label>
             <input
@@ -571,9 +571,13 @@ export default function DegreePilotPlanner() {
                 invalidateResult();
               }}
             />
-            <span>Include Winter</span>
+            <span>Include Winter (max 2 courses)</span>
           </label>
         </div>
+        <p className="dp-auto-start-note">
+          Summer and Winter allow up to 2 courses each (or your selected
+          limit if lower). Actual offerings must be verified.
+        </p>
         <div className="dp-submit-row">
           <button
             className="dp-submit"
