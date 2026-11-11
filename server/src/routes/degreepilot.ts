@@ -3,7 +3,11 @@ import multer from "multer";
 import { rateLimit } from "express-rate-limit";
 import { extractAcademicAuditFromPdf } from "../services/audit-extraction.ts";
 import { validateAcademicAudit } from "../services/audit-validator.ts";
-import { PlanningPreferencesSchema } from "../services/ai-plan-schema.ts";
+import {
+  PlanningOptionsSchema,
+  PlanningPreferencesSchema,
+} from "../services/ai-plan-schema.ts";
+import { chooseAutomaticStartTerm } from "../services/automatic-start-term.ts";
 import { generateReviewedTwoYearPlan } from "../services/planning-workflow.ts";
 
 const router = Router();
@@ -64,11 +68,15 @@ router.post(
         res.status(400).json({ error: "Invalid PDF file." });
         return;
       }
-      const preferences = PlanningPreferencesSchema.parse(
+      const options = PlanningOptionsSchema.parse(
         JSON.parse(String(req.body.preferences ?? "{}")),
       );
       // No PDFs are saved; extraction calls API with store:false and removes common identifiers.
       const extracted = await extractAcademicAuditFromPdf(req.file.buffer);
+      const preferences = PlanningPreferencesSchema.parse({
+        ...options,
+        startTerm: chooseAutomaticStartTerm(extracted.audit, options),
+      });
       const auditCheck = validateAcademicAudit(
         extracted.audit,
         extracted.evidenceIssues,
@@ -89,6 +97,7 @@ router.post(
       res.json({
         plan: reviewed.plan,
         finalProposedTerm: reviewed.finalProposedTerm,
+        planningStartTerm: preferences.startTerm,
         graduationStatus: reviewed.graduationStatus,
         revision: reviewed.revision,
         coverage: {

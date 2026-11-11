@@ -61,7 +61,7 @@ const matchesRange = (
   return !!m && m[1] === normalize(subject) && +m[2] >= min && +m[2] <= max;
 };
 
-function isOverallDegreeCredits(req: AuditRequirement): boolean {
+export function isOverallDegreeCredits(req: AuditRequirement): boolean {
   const context = `${req.id} ${req.section} ${req.originalText}`.toLowerCase();
   // Only a narrow, explicitly degree-wide match. Never mistake a major/residency
   // counter for the overall degree minimum.

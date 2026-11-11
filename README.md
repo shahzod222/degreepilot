@@ -9,7 +9,9 @@ Instead of suggesting random courses, it uses the student's actual audit, a cour
 ## Features
 
 - **PDF-to-requirements:** Extracts courses, completed/in-progress work, credit totals, choices, and academic rules from a DegreeWorks PDF.
-- **Personalized scheduling:** Recommends one schedule based on remaining requirements, a **1–4 course-per-term** preference, start term, and optional Summer/Winter sessions.
+- **Personalized scheduling:** Recommends one schedule based on remaining requirements, a **1–5 course Fall/Spring limit** (Summer/Winter capped at 2) and optional Summer/Winter sessions. The start term is selected automatically.
+- **Semester-specific caps:** Fall/Spring use 1–5 selected courses; enabled Summer/Winter sessions allow up to 2 each, or the smaller selected cap.
+- **Credit-gap attempts:** The AI can use catalog-backed, audit-aligned additional-elective candidates to try to cover a shortfall, while leaving their degree/category eligibility explicitly unverified.
 - **Earlier completion first:** Uses the two-year period as a *maximum planning horizon*, not a requirement to spread out courses.
 - **Requirement and credit checks:** Flags missing courses, projected credit shortfalls, duplicate selections, and requirements that cannot yet be confirmed.
 - **Database-backed checks:** Uses PostgreSQL course credits and available prerequisite records; incomplete rules are labeled **unknown**, not assumed satisfied.
@@ -31,7 +33,7 @@ Instead of suggesting random courses, it uses the student's actual audit, a cour
 1. **Upload:** The student selects a DegreeWorks PDF and scheduling preferences in React.
 2. **Extract:** Express receives the PDF; PDF.js converts its text into page-aware input. The OpenAI model extracts a structured academic audit.
 3. **Validate the audit:** TypeScript checks the schema, cited text evidence, course statuses, and obvious contradictions.
-4. **Generate a plan:** The AI proposes courses and semesters based on outstanding requirements.
+4. **Generate a plan:** The server chooses the next upcoming academic term (in New York time), excluding terms already underway and dated in-progress audit terms. The AI proposes courses only within the resulting allowed two-year calendar. Summer/Winter are included only if selected. The term boundaries are planning heuristics, not verified registration dates.
 5. **Check against data:** The backend consults PostgreSQL for known course credits/prerequisites, checks course choices and term limits, and calculates conditional requirement coverage and degree credits.
 6. **Revise once if useful:** Actionable errors or gaps are sent back to the AI. The revised plan is checked again; an unsafe or worse revision is rejected.
 7. **Show results:** React displays the selected plan, last proposed course term, projected credits, missing requirements, and unresolved conditions.

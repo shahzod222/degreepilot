@@ -1,4 +1,10 @@
-import type { AiPlan, PlanningPreferences } from "./ai-plan-schema.ts";
+import {
+  allowedTwoYearTerms,
+  termCourseLimit,
+  type AiPlan,
+  type PlanningPreferences,
+} from "./ai-plan-schema.ts";
+import type { CourseCandidate } from "./course-candidates.ts";
 import type { PlanValidationReport } from "./plan-validator.ts";
 import type { DbPlanCheck } from "./plan-db-checks.ts";
 
@@ -26,6 +32,7 @@ export function actionablePlanFeedback(
   report: PlanValidationReport,
   prefs: PlanningPreferences,
   prerequisites: DbPlanCheck["prerequisites"] = [],
+  candidates: readonly CourseCandidate[] = [],
 ): RevisionFinding[] {
   const findings: RevisionFinding[] = [];
   for (const issue of report.errors) {
@@ -53,6 +60,16 @@ export function actionablePlanFeedback(
         message: `${missing.explanation} First cover all required course slots, then select a verified eligible option if possible. Do not invent electives.`,
       });
     }
+    if (
+      missing.ruleKind === "complex" &&
+      candidates.some((candidate) => candidate.forRequirementId === missing.requirementId)
+    ) {
+      findings.push({
+        code: "COMPLEX_REQUIREMENT_CANDIDATE",
+        requirementId: missing.requirementId,
+        message: `Consider an audit-grounded catalog candidate for ${missing.requirementId}; category eligibility remains unverified.`,
+      });
+    }
     // Complex/GPA/residency constraints must remain visible but are not
     // mechanically fixable by inventing courses or assertions.
   }
@@ -67,10 +84,13 @@ export function actionablePlanFeedback(
   }
 
   const courseCount = plan.semesters.reduce((n, t) => n + t.courses.length, 0);
-  const capacityLowerBound =
-    Math.ceil(courseCount / prefs.maxCoursesPerSemester) - 1;
+  let accumulatedCapacity = 0;
+  const capacityLowerBound = allowedTwoYearTerms(prefs).findIndex((term) => {
+    accumulatedCapacity += termCourseLimit(term, prefs);
+    return accumulatedCapacity >= courseCount;
+  });
   const last = lastScheduledTermIndex(plan);
-  if (courseCount > 0 && last > capacityLowerBound) {
+  if (courseCount > 0 && capacityLowerBound >= 0 && last > capacityLowerBound) {
     findings.push({
       code: "POSSIBLY_DELAYED_SCHEDULE",
       requirementId: null,
@@ -88,6 +108,7 @@ export function planQuality(
   const mandatoryMissing = report.graduationCoverage.missing
     .filter((r) => isCourseSlot(r.ruleKind))
     .reduce((sum, r) => sum + (r.missingCourseSlots ?? 1), 0);
+  const complexMissing = report.graduationCoverage.missing.filter((r) => r.ruleKind === "complex").length;
   const degree = report.graduationCoverage.degreeCredits;
   const missingCreditValues = degree?.missingCreditValuesFor.length ?? 0;
   const remaining = degree?.remainingIfKnown;
@@ -98,6 +119,7 @@ export function planQuality(
     unknownCredit,
     missingCreditValues,
     remaining ?? 99999,
+    complexMissing,
     // Earlier completion matters after mandatory slots and credits.
     lastScheduledTermIndex(plan),
   ];

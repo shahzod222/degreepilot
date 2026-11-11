@@ -1,6 +1,7 @@
 import { db } from "../db/pool.ts";
 import { checkPrerequisites } from "./prerequisites.ts";
 import type { AcademicAudit } from "./audit-schema.ts";
+import type { CourseCandidate } from "./course-candidates.ts";
 import type { AiPlan, PlanningPreferences } from "./ai-plan-schema.ts";
 import {
   validateProposedPlan,
@@ -33,6 +34,7 @@ export async function validateProposedPlanWithDb(
   plan: AiPlan,
   audit: AcademicAudit,
   prefs: PlanningPreferences,
+  candidates: readonly CourseCandidate[] = [],
 ): Promise<DbPlanCheck> {
   const planned = plan.semesters
     .flatMap((s) => s.courses)
@@ -106,7 +108,7 @@ export async function validateProposedPlanWithDb(
       previousAssumed.add(norm(course.courseId));
   }
 
-  const validation = validateProposedPlan(plan, audit, prefs, credits, true);
+  const validation = validateProposedPlan(plan, audit, prefs, credits, true, candidates);
   // Course-number ranges alone do not establish a real catalog course.
   // Explicitly listed audit options can be absent from our incomplete catalog;
   // treat those as unknown rather than automatically invalid.

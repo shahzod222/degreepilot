@@ -1,4 +1,5 @@
 import { checkPrerequisites, getPrerequisites } from "./prerequisites.ts";
+import { termCourseLimit } from "./ai-plan-schema.ts";
 import {
   evaluateRequirements,
   normalizeCourses,
@@ -304,9 +305,9 @@ export async function generateCandidatePlans(
   if (
     !Number.isInteger(input.maxCoursesPerSemester) ||
     input.maxCoursesPerSemester < 1 ||
-    input.maxCoursesPerSemester > 4
+    input.maxCoursesPerSemester > 5
   ) {
-    throw new Error("maxCoursesPerSemester must be an integer between 1 and 4");
+    throw new Error("maxCoursesPerSemester must be an integer between 1 and 5");
   }
   if (
     !Number.isInteger(input.startTerm.year) ||
@@ -414,7 +415,7 @@ export async function generateCandidatePlans(
       const ready = await readyCourses(state);
       // Include an empty selection: sometimes deferring a flexible course
       // gives a better balance without losing progress inside two years.
-      const choices = [[], ...combinations(ready, input.maxCoursesPerSemester)];
+      const choices = [[], ...combinations(ready, termCourseLimit(term, input))];
       const before = evaluateRequirements(input.requirements, [
         ...state.assumed,
       ]).fulfilledSlots;
@@ -441,13 +442,16 @@ export async function generateCandidatePlans(
     }
 
     const remainingTerms = terms.length - step - 1;
+    const remainingCapacity = terms
+      .slice(step + 1)
+      .reduce((count, next) => count + termCourseLimit(next, input), 0);
     function comparePartial(a: SearchState, b: SearchState): number {
       const potential = (s: SearchState) => {
         const cov = evaluateRequirements(input.requirements, [...s.assumed]);
         const openSlots = cov.totalSlots - cov.fulfilledSlots;
         return (
           cov.fulfilledSlots +
-          Math.min(openSlots, remainingTerms * input.maxCoursesPerSemester)
+          Math.min(openSlots, remainingCapacity)
         );
       };
       const coverage = potential(b) - potential(a);

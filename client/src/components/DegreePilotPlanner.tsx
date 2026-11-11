@@ -22,6 +22,7 @@ type PlanResponse = {
     limitations: string[];
   };
   finalProposedTerm: { year: number; season: string } | null;
+  planningStartTerm?: { year: number; season: string };
   graduationStatus: "requirements_missing" | "needs_verification";
   revision: { attempted: boolean; accepted: boolean; note: string };
   coverage: {
@@ -157,8 +158,6 @@ export default function DegreePilotPlanner() {
   const [maxCourses, setMaxCourses] = useState(3);
   const [summer, setSummer] = useState(false);
   const [winter, setWinter] = useState(false);
-  const [startSeason, setStartSeason] = useState("Fall");
-  const [startYear, setStartYear] = useState(2027);
   const [demoCode, setDemoCode] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -291,7 +290,6 @@ export default function DegreePilotPlanner() {
       data.append(
         "preferences",
         JSON.stringify({
-          startTerm: { season: startSeason, year: startYear },
           maxCoursesPerSemester: maxCourses,
           includeSummer: summer,
           includeWinter: winter,
@@ -503,7 +501,7 @@ export default function DegreePilotPlanner() {
         </div>
         <div className="dp-settings-grid">
           <label className="dp-field" htmlFor="dp-limit">
-            Courses per term
+            Max courses per Fall/Spring term
             <select
               id="dp-limit"
               value={maxCourses}
@@ -513,43 +511,12 @@ export default function DegreePilotPlanner() {
                 invalidateResult();
               }}
             >
-              {[1, 2, 3, 4].map((n) => (
+              {[1, 2, 3, 4, 5].map((n) => (
                 <option value={n} key={n}>
                   {n} {n === 1 ? "course" : "courses"}
                 </option>
               ))}
             </select>
-          </label>
-          <label className="dp-field" htmlFor="dp-season">
-            Starting season
-            <select
-              id="dp-season"
-              value={startSeason}
-              disabled={loading}
-              onChange={(e) => {
-                setStartSeason(e.target.value);
-                invalidateResult();
-              }}
-            >
-              {["Winter", "Spring", "Summer", "Fall"].map((season) => (
-                <option key={season}>{season}</option>
-              ))}
-            </select>
-          </label>
-          <label className="dp-field" htmlFor="dp-year">
-            Starting year
-            <input
-              id="dp-year"
-              type="number"
-              min={2026}
-              max={2100}
-              value={startYear}
-              disabled={loading}
-              onChange={(e) => {
-                setStartYear(+e.target.value);
-                invalidateResult();
-              }}
-            />
           </label>
           <div className="dp-field dp-password-field">
             <label htmlFor="dp-password">Demo password</label>
@@ -576,6 +543,11 @@ export default function DegreePilotPlanner() {
             </div>
           </div>
         </div>
+        <p className="dp-auto-start-note">
+          <Icon name="calendar" size={16} />
+          The starting term is chosen automatically from the current academic
+          calendar and in-progress courses in your PDF.
+        </p>
         <div className="dp-toggles" aria-label="Optional sessions">
           <label>
             <input
@@ -587,7 +559,7 @@ export default function DegreePilotPlanner() {
                 invalidateResult();
               }}
             />
-            <span>Include Summer</span>
+            <span>Include Summer (max 2 courses)</span>
           </label>
           <label>
             <input
@@ -599,9 +571,13 @@ export default function DegreePilotPlanner() {
                 invalidateResult();
               }}
             />
-            <span>Include Winter</span>
+            <span>Include Winter (max 2 courses)</span>
           </label>
         </div>
+        <p className="dp-auto-start-note">
+          Summer and Winter allow up to 2 courses each (or your selected
+          limit if lower). Actual offerings must be verified.
+        </p>
         <div className="dp-submit-row">
           <button
             className="dp-submit"
@@ -756,6 +732,12 @@ export default function DegreePilotPlanner() {
             )}
           </section>
 
+          {result.planningStartTerm && (
+            <p className="dp-auto-start-result">
+              Roadmap starts in {result.planningStartTerm.season}{" "}
+              {result.planningStartTerm.year} (selected automatically).
+            </p>
+          )}
           {result.plan.overview && (
             <p className="dp-plan-intro">{result.plan.overview}</p>
           )}

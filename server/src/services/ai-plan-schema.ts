@@ -5,11 +5,18 @@ export type Season = z.infer<typeof SeasonSchema>;
 
 export const PlanningPreferencesSchema = z.object({
   startTerm: z.object({ year: z.number().int(), season: SeasonSchema }),
-  maxCoursesPerSemester: z.number().int().min(1).max(4),
+  maxCoursesPerSemester: z.number().int().min(1).max(5),
   includeSummer: z.boolean(),
   includeWinter: z.boolean(),
 });
 export type PlanningPreferences = z.infer<typeof PlanningPreferencesSchema>;
+
+// The browser only chooses workload and optional sessions. The server
+// derives startTerm from the calendar and the extracted DegreeWorks audit.
+export const PlanningOptionsSchema = PlanningPreferencesSchema.omit({
+  startTerm: true,
+});
+export type PlanningOptions = z.infer<typeof PlanningOptionsSchema>;
 
 // Every proposed course must be tied to specific IDs extracted from the audit.
 // This is a proposed *schedule*, not a prediction of final graduation eligibility.
@@ -30,6 +37,16 @@ export const AiPlanSchema = z.object({
 export type AiPlan = z.infer<typeof AiPlanSchema>;
 
 export type AcademicTerm = { year: number; season: Season };
+
+/** Short sessions cap at two, or the selected lower limit. */
+export function termCourseLimit(
+  term: Pick<AcademicTerm, "season">,
+  prefs: Pick<PlanningPreferences, "maxCoursesPerSemester">,
+): number {
+  return term.season === "Summer" || term.season === "Winter"
+    ? Math.min(2, prefs.maxCoursesPerSemester)
+    : prefs.maxCoursesPerSemester;
+}
 const seasons: Season[] = ["Winter", "Spring", "Summer", "Fall"];
 
 // Exactly eight consecutive *calendar seasons*, NOT eight included semesters.

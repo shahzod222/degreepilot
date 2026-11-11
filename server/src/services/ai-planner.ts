@@ -4,6 +4,7 @@ import type { AcademicAudit } from "./audit-schema.ts";
 import type { AuditValidationReport } from "./audit-validator.ts";
 import {
   AiPlanSchema,
+  termCourseLimit,
   PlanningPreferencesSchema,
   allowedTwoYearTerms,
   type AiPlan,
@@ -27,7 +28,9 @@ pretend to know outside college policies, or invent course offerings, credits or
 
 Planning rules:
 1. Return EXACTLY the permitted terms provided by the application, in the given order,
-   including empty terms. Use at most maxCoursesPerSemester courses per term.
+   including empty terms. Respect perTermCourseLimits for EACH term: Fall and Spring
+   use the 1-5 course user preference; Summer and Winter allow at most 2 (or
+   only 1 if that is the selected overall limit). Empty terms are allowed.
 2. Never schedule a course the audit calls completed or in_progress. Treat IP classes as
    already assigned to their recorded terms, but their successful completion is CONDITIONAL.
 3. You MUST address every checklist entry with action="schedule": assign the exact required
@@ -57,7 +60,18 @@ Planning rules:
     Do not silently omit an advanced elective, course range, or credit shortfall.
 11. Prefer accomplishing necessary work in earlier semesters when feasible; do not postpone
     an independent course solely to spread the schedule across the entire horizon.
-12. Do not repeat private student identifiers. Do not claim official advisor approval.
+12. For every unresolved complex category such as College Option, attempt an
+    audit-grounded, catalog-backed course candidate if explicitly provided.
+    Explain that eligibility/credit allocation is provisional. If none is
+    supported, preserve the missing category instead of inventing a class.
+13. After mandatory course slots are covered, estimate the remaining total
+    degree-credit gap using the PROVIDED catalog credit values; remember the
+    audit's applied credit total already includes in-progress courses. If a
+    gap remains, consider distinct catalogCandidates linked to the overall
+    degree-credit requirement, selecting as few extra courses as needed.
+    These candidates are NOT verified degree/category eligibility. Never
+    schedule unlisted courses or extras that audit policies clearly prohibit.
+14. Do not repeat private student identifiers. Do not claim official advisor approval.
 Return only the structured response matching the schema.
 `;
 
@@ -101,6 +115,9 @@ export async function generateAiProvisionalPlan(
           auditWarnings: auditValidation.warnings,
           preferences,
           permittedTerms: allowedTerms,
+          perTermCourseLimits: allowedTerms.map((term) => ({
+            ...term, maxCourses: termCourseLimit(term, preferences),
+          })),
           requirementChecklist: guidance?.checklist ?? [],
           catalogCandidates: guidance?.catalogCandidates ?? [],
         }),

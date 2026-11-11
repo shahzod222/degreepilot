@@ -335,6 +335,24 @@
 .dp-password-toggle:hover {
   background: #f1f6f7;
 }
+.dp-auto-start-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 15px 0 0;
+  color: #6b858d;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.dp-auto-start-note svg {
+  color: var(--dp-teal);
+  flex-shrink: 0;
+}
+.dp-auto-start-result {
+  font-size: 13px;
+  color: #397f7e;
+  margin: 12px 0;
+}
 .dp-toggles {
   display: flex;
   gap: 22px;
