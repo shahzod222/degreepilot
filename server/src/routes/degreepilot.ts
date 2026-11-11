@@ -111,14 +111,20 @@ router.post(
         ],
       });
     } catch (error) {
-      // Do not return PDF text, LLM prompts, secrets, or database error details.
+      const err = error instanceof Error ? error : new Error(String(error));
+
       console.error(
-        "DegreePilot planning request failed:",
-        error instanceof Error ? error.name : "Unknown error",
+        "DegreePilot planning failed:",
+        "name:",
+        err.name,
+        "message:",
+        err.message,
+        "stack:",
+        err.stack,
       );
+
       res.status(500).json({
-        error:
-          "Could not generate a verified provisional plan. Check your PDF and server configuration.",
+        error: "Could not generate a provisional plan.",
       });
     }
   },
