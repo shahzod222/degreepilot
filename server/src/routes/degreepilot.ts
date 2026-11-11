@@ -19,12 +19,17 @@ const upload = multer({
 
 // Defense in depth against unexpected API bills. For a public demo, use a
 // manually entered demo access code; DO NOT embed it in frontend environment vars.
+
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 3,
   standardHeaders: "draft-7",
   legacyHeaders: false,
+  validate: {
+    forwardedHeader: false,
+  },
 });
+
 router.post(
   "/api/degreepilot/plan",
   limiter,
@@ -69,12 +74,10 @@ router.post(
         extracted.evidenceIssues,
       );
       if (!auditCheck.canDraftPlan) {
-        res
-          .status(422)
-          .json({
-            error: "Audit could not be safely interpreted.",
-            issues: auditCheck.errors,
-          });
+        res.status(422).json({
+          error: "Audit could not be safely interpreted.",
+          issues: auditCheck.errors,
+        });
         return;
       }
       const reviewed = await generateReviewedTwoYearPlan(
@@ -113,12 +116,10 @@ router.post(
         "DegreePilot planning request failed:",
         error instanceof Error ? error.name : "Unknown error",
       );
-      res
-        .status(500)
-        .json({
-          error:
-            "Could not generate a verified provisional plan. Check your PDF and server configuration.",
-        });
+      res.status(500).json({
+        error:
+          "Could not generate a verified provisional plan. Check your PDF and server configuration.",
+      });
     }
   },
 );

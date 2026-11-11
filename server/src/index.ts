@@ -9,6 +9,7 @@ const app = express();
 const PORT = Number(process.env.PORT ?? 3001);
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN ?? "http://127.0.0.1:5173";
 
+app.set("trust proxy", 1);
 app.use(cors({ origin: CLIENT_ORIGIN }));
 app.use(express.json());
 app.use(degreepilotRouter);
