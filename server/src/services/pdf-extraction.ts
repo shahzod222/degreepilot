@@ -1,3 +1,4 @@
+import "pdfjs-dist/legacy/build/pdf.worker.mjs";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 
 /** One page stays separate so the LLM can cite the source of each claim. */
@@ -55,7 +56,7 @@ export async function extractPdfText(buffer: Buffer): Promise<ExtractedPdf> {
         const x = item.transform[4];
         const y = item.transform[5];
 
-        let row = rows.find(existing => Math.abs(existing.y - y) < 2);
+        let row = rows.find((existing) => Math.abs(existing.y - y) < 2);
         if (!row) {
           row = { y, fragments: [] };
           rows.push(row);
@@ -65,11 +66,12 @@ export async function extractPdfText(buffer: Buffer): Promise<ExtractedPdf> {
 
       const lines = rows
         .sort((a, b) => b.y - a.y)
-        .map(row => row.fragments
-          .sort((a, b) => a.x - b.x)
-          .map(part => part.text.trim())
-          .filter(Boolean)
-          .join(" ")
+        .map((row) =>
+          row.fragments
+            .sort((a, b) => a.x - b.x)
+            .map((part) => part.text.trim())
+            .filter(Boolean)
+            .join(" "),
         )
         .filter(Boolean);
 
@@ -77,14 +79,18 @@ export async function extractPdfText(buffer: Buffer): Promise<ExtractedPdf> {
       page.cleanup();
     }
 
-    if (pages.every(page => page.text.trim().length < 40)) {
-      throw new Error("No searchable text found. Scanned PDFs are not supported yet.");
+    if (pages.every((page) => page.text.trim().length < 40)) {
+      throw new Error(
+        "No searchable text found. Scanned PDFs are not supported yet.",
+      );
     }
 
     return {
       pageCount: pages.length,
       pages,
-      text: pages.map(page => `[PAGE ${page.page}]\n${page.text}`).join("\n\n"),
+      text: pages
+        .map((page) => `[PAGE ${page.page}]\n${page.text}`)
+        .join("\n\n"),
     };
   } finally {
     await loadingTask.destroy();
