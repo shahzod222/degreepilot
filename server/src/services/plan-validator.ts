@@ -1,10 +1,12 @@
 import type { AcademicAudit } from "./audit-schema.ts";
+import type { CourseCandidate } from "./course-candidates.ts";
 import {
   assessGraduationCoverage,
   type GraduationCoverageReport,
 } from "./graduation-coverage.ts";
 import {
   allowedTwoYearTerms,
+  termCourseLimit,
   termKey,
   type AiPlan,
   type PlanningPreferences,
@@ -59,6 +61,7 @@ export function validateProposedPlan(
   prefs: PlanningPreferences,
   knownCredits: ReadonlyMap<string, number> = new Map(),
   prerequisitesChecked = false,
+  catalogCandidates: readonly CourseCandidate[] = [],
 ): PlanValidationReport {
   const errors: PlanIssue[] = [];
   const warnings: PlanIssue[] = [];
@@ -126,12 +129,13 @@ export function validateProposedPlan(
       add("error", "DUPLICATE_TERM", path, `${term} appears more than once.`);
     }
     usedTerms.add(term);
-    if (semester.courses.length > prefs.maxCoursesPerSemester) {
+    const limit = termCourseLimit(semester, prefs);
+    if (semester.courses.length > limit) {
       add(
         "error",
         "COURSE_LIMIT",
         path,
-        `${semester.courses.length} courses exceed the limit of ${prefs.maxCoursesPerSemester}.`,
+        `${semester.courses.length} courses exceed the ${semester.season} limit of ${limit}.`,
       );
     }
 
@@ -258,7 +262,14 @@ export function validateProposedPlan(
             rule.kind === "complex"
               ? `${req.originalText} ${rule.description}`
               : `${req.originalText} ${rule.eligibleCourseText ?? ""}`;
-          if (normalize(sourceWords).includes(courseId))
+          if (
+            normalize(sourceWords).includes(courseId) ||
+            catalogCandidates.some(
+              (candidate) =>
+                candidate.forRequirementId === reqId &&
+                normalize(candidate.courseId) === courseId,
+            )
+          )
             hasUnverifiedSupport = true;
           add(
             "warning",
