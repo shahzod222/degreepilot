@@ -15,7 +15,12 @@ export function lastScheduledTermIndex(plan: AiPlan): number {
   return -1;
 }
 
-/** Distinguish actionable omissions from ordinary IP/complex-rule warnings. */
+const isCourseSlot = (kind: string) =>
+  kind === "required_course" ||
+  kind === "choose_courses" ||
+  kind === "course_range";
+
+/** Only send issues the LLM might change by changing selected courses/terms. */
 export function actionablePlanFeedback(
   plan: AiPlan,
   report: PlanValidationReport,
@@ -24,66 +29,104 @@ export function actionablePlanFeedback(
 ): RevisionFinding[] {
   const findings: RevisionFinding[] = [];
   for (const issue of report.errors) {
-    findings.push({ code: issue.code, requirementId: null, message: `${issue.path}: ${issue.message}` });
-  }
-  for (const r of report.graduationCoverage.missing) {
     findings.push({
-      code: r.ruleKind === "credit_minimum" ? "CREDIT_SHORTFALL" : "MISSING_REQUIREMENT",
-      requirementId: r.requirementId,
-      message: r.explanation,
+      code: issue.code,
+      requirementId: null,
+      message: `${issue.path}: ${issue.message}`,
     });
+  }
+  for (const missing of report.graduationCoverage.missing) {
+    if (isCourseSlot(missing.ruleKind)) {
+      findings.push({
+        code: "MISSING_REQUIRED_COURSE_SLOT",
+        requirementId: missing.requirementId,
+        message: missing.explanation,
+      });
+    } else if (
+      missing.ruleKind === "credit_minimum" &&
+      missing.requirementId ===
+        report.graduationCoverage.degreeCredits?.requirementId
+    ) {
+      findings.push({
+        code: "DEGREE_CREDIT_SHORTFALL",
+        requirementId: missing.requirementId,
+        message: `${missing.explanation} First cover all required course slots, then select a verified eligible option if possible. Do not invent electives.`,
+      });
+    }
+    // Complex/GPA/residency constraints must remain visible but are not
+    // mechanically fixable by inventing courses or assertions.
   }
   for (const p of prerequisites) {
     if (p.result === "missing") {
-      findings.push({ code: "STORED_PREREQUISITE_MISSING", requirementId: null,
-        message: `${p.courseId}: a required prerequisite is missing under stored rules. Do not schedule until resolved.` });
+      findings.push({
+        code: "STORED_PREREQUISITE_MISSING",
+        requirementId: null,
+        message: `${p.courseId}: stored prerequisite not met. Move it later or select another supported course.`,
+      });
     }
   }
 
-  // User asked for EARLIEST feasible graduation, not aesthetic spreading.
-  // If even the capacity-only lower bound is earlier than the current last term,
-  // invite a single revision. Prerequisites may still prevent compaction.
   const courseCount = plan.semesters.reduce((n, t) => n + t.courses.length, 0);
-  const earliestCapacityEnd = Math.ceil(courseCount / prefs.maxCoursesPerSemester) - 1;
+  const capacityLowerBound =
+    Math.ceil(courseCount / prefs.maxCoursesPerSemester) - 1;
   const last = lastScheduledTermIndex(plan);
-  if (courseCount > 0 && last > earliestCapacityEnd) {
-    findings.push({ code: "POSSIBLY_DELAYED_SCHEDULE", requirementId: null,
-      message: `The last proposed course is in term ${last + 1}; course-count capacity could fit them in ${earliestCapacityEnd + 1} term(s). Move courses earlier ONLY if prerequisite sequencing and other constraints allow.` });
+  if (courseCount > 0 && last > capacityLowerBound) {
+    findings.push({
+      code: "POSSIBLY_DELAYED_SCHEDULE",
+      requirementId: null,
+      message: `Current last term index ${last}, capacity-only lower bound ${capacityLowerBound}. Compress only if sequencing and offering uncertainty permit.`,
+    });
   }
   return findings;
 }
 
-function quality(plan: AiPlan, report: PlanValidationReport): number[] {
-  const missingCourses = report.graduationCoverage.missing
-    .filter(r => r.ruleKind !== "credit_minimum")
-    .reduce((total, r) => total + (r.missingCourseSlots ?? 1), 0);
-  const unknownCredit = report.graduationCoverage.degreeCredits?.remainingIfKnown === null ||
-    report.graduationCoverage.degreeCredits === null ? 1 : 0;
-  const creditGap = report.graduationCoverage.degreeCredits?.remainingIfKnown ?? 99999;
-  const extraMissing = report.graduationCoverage.missing.filter(
-    r => r.ruleKind !== "credit_minimum" && r.missingCourseSlots === undefined
-  ).length;
+/** Lexicographic: any hard error beats a cosmetically earlier plan. */
+export function planQuality(
+  plan: AiPlan,
+  report: PlanValidationReport,
+): number[] {
+  const mandatoryMissing = report.graduationCoverage.missing
+    .filter((r) => isCourseSlot(r.ruleKind))
+    .reduce((sum, r) => sum + (r.missingCourseSlots ?? 1), 0);
+  const degree = report.graduationCoverage.degreeCredits;
+  const missingCreditValues = degree?.missingCreditValuesFor.length ?? 0;
+  const remaining = degree?.remainingIfKnown;
+  const unknownCredit = degree === null || remaining === null ? 1 : 0;
   return [
     report.errors.length,
-    missingCourses,
-    extraMissing,
+    mandatoryMissing,
     unknownCredit,
-    creditGap,
-    // Only after coverage, favor an earlier final proposed course.
-    Math.max(-1, lastScheduledTermIndex(plan)),
+    missingCreditValues,
+    remaining ?? 99999,
+    // Earlier completion matters after mandatory slots and credits.
+    lastScheduledTermIndex(plan),
   ];
 }
 
-/** Accept a revision only when it is strictly better on validated objectives. */
 export function isRevisedPlanBetter(
-  original: {plan: AiPlan; validation: PlanValidationReport},
-  revised: {plan: AiPlan; validation: PlanValidationReport},
+  original: { plan: AiPlan; validation: PlanValidationReport },
+  revised: { plan: AiPlan; validation: PlanValidationReport },
 ): boolean {
-  const a = quality(original.plan, original.validation);
-  const b = quality(revised.plan, revised.validation);
+  const a = planQuality(original.plan, original.validation);
+  const b = planQuality(revised.plan, revised.validation);
   for (let i = 0; i < a.length; i++) {
-    if (a[i] < b[i]) return false;
     if (b[i] < a[i]) return true;
+    if (b[i] > a[i]) return false;
   }
   return false;
+}
+
+export function revisionComparisonNote(
+  original: { plan: AiPlan; validation: PlanValidationReport },
+  revised: { plan: AiPlan; validation: PlanValidationReport },
+): string {
+  const [initialErrors, initialSlots, , , initialGap] = planQuality(
+    original.plan,
+    original.validation,
+  );
+  const [newErrors, newSlots, , , newGap] = planQuality(
+    revised.plan,
+    revised.validation,
+  );
+  return `Revision rejected after validation (errors ${initialErrors}→${newErrors}; missing course slots ${initialSlots}→${newSlots}; projected credit gap ${initialGap === 99999 ? "unknown" : initialGap}→${newGap === 99999 ? "unknown" : newGap}). Kept the stronger original plan.`;
 }

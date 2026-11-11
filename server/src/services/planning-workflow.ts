@@ -1,7 +1,6 @@
 import type { AcademicAudit } from "./audit-schema.ts";
 import type { AuditValidationReport } from "./audit-validator.ts";
 import {
-  allowedTwoYearTerms,
   PlanningPreferencesSchema,
   type AiPlan,
   type PlanningPreferences,
@@ -15,11 +14,13 @@ import {
   getRangeCourseCandidates,
   type CourseCandidate,
 } from "./course-candidates.ts";
+import { buildPlanningChecklist } from "./planning-checklist.ts";
 import { reviseAiPlanOnce } from "./revise-ai-plan.ts";
 import {
   actionablePlanFeedback,
   isRevisedPlanBetter,
   lastScheduledTermIndex,
+  revisionComparisonNote,
 } from "./plan-review.ts";
 
 export interface VerifiedPlanningResult {
@@ -28,18 +29,12 @@ export interface VerifiedPlanningResult {
   prerequisites: DbPlanCheck["prerequisites"];
   missingDatabaseCreditValues: string[];
   finalProposedTerm: { year: number; season: string } | null;
-  /** Even if all slots are scheduled, unresolved category policies/IP statuses preclude certification. */
   graduationStatus: "requirements_missing" | "needs_verification";
-  revision: {
-    attempted: boolean;
-    accepted: boolean;
-    note: string;
-  };
+  revision: { attempted: boolean; accepted: boolean; note: string };
   model: string;
   tokenUsage: { input: number; output: number };
 }
 
-/** Override dependencies for fast offline tests. Production calls the actual API and DB. */
 export interface PlanningDependencies {
   generateInitial: typeof generateAiProvisionalPlan;
   checkWithDb: typeof validateProposedPlanWithDb;
@@ -53,7 +48,44 @@ const defaults: PlanningDependencies = {
   revise: reviseAiPlanOnce,
 };
 
-/** Initial AI plan → DB/coverage validation → at most ONE AI revision → DB revalidation → best safe result. */
+const norm = (id: string) =>
+  id.normalize("NFKC").trim().toUpperCase().replace(/\s+/g, " ");
+
+/** A catalog-range course must have been on the candidates supplied to the LLM. */
+function validateCatalogSelections(
+  plan: AiPlan,
+  audit: AcademicAudit,
+  candidates: CourseCandidate[],
+  check: DbPlanCheck,
+) {
+  const allowed = new Set(
+    candidates.map((c) => `${c.forRequirementId}\u0000${norm(c.courseId)}`),
+  );
+  for (const [si, semester] of plan.semesters.entries()) {
+    for (const [ci, course] of semester.courses.entries()) {
+      for (const id of course.requirementIds) {
+        const req = audit.requirements.find((r) => r.id === id);
+        if (req?.rule.kind !== "course_range") continue;
+        if (!allowed.has(`${id}\u0000${norm(course.courseId)}`)) {
+          check.validation.errors.push({
+            severity: "error",
+            code: "RANGE_NOT_IN_PROVIDED_CANDIDATES",
+            path: `semesters[${si}].courses[${ci}]`,
+            message: `${course.courseId} was not among the database candidates supplied for ${id}.`,
+          });
+        }
+      }
+    }
+  }
+  check.validation.canDisplayProvisionalPlan =
+    check.validation.errors.length === 0;
+}
+
+/**
+ * Deterministic checklist + catalog candidates -> 1 AI draft -> DB validation ->
+ * at most 1 AI correction -> DB revalidation -> best safe provisional plan.
+ * Never claims institutional graduation approval.
+ */
 export async function generateReviewedTwoYearPlan(
   audit: AcademicAudit,
   auditValidation: AuditValidationReport,
@@ -63,13 +95,21 @@ export async function generateReviewedTwoYearPlan(
   if (!auditValidation.canDraftPlan)
     throw new Error("Audit has blocking extraction errors.");
   const preferences = PlanningPreferencesSchema.parse(rawPreferences);
+  const checklist = buildPlanningChecklist(audit);
+  if (!checklist.length)
+    throw new Error("No requirements extracted; cannot draft a reliable plan.");
+  // Stage 6 only supplied candidates AFTER the first plan. Stage 7 supplies them NOW.
+  // A database failure is not silently papered over with invented candidates.
+  const candidates = await deps.candidates(audit);
   const initial = await deps.generateInitial(
     audit,
     auditValidation,
     preferences,
+    { checklist, catalogCandidates: candidates },
   );
-  let current: AiPlan = initial.plan;
+  let current = initial.plan;
   let check = await deps.checkWithDb(current, audit, preferences);
+  validateCatalogSelections(current, audit, candidates, check);
   let tokenInput = initial.tokenUsage.input ?? 0;
   let tokenOutput = initial.tokenUsage.output ?? 0;
   const feedback = actionablePlanFeedback(
@@ -80,52 +120,57 @@ export async function generateReviewedTwoYearPlan(
   );
   let attempted = false;
   let accepted = false;
-  let note = "No fixable omissions or obvious scheduling delays found.";
+  let note = feedback.length
+    ? "Correction not attempted."
+    : "No actionable missing slots, credit gaps or obvious delays found.";
   let model = initial.model;
 
   if (feedback.length) {
     attempted = true;
     try {
-      const choices: CourseCandidate[] = await deps.candidates(audit, current);
-      const improved = await deps.revise({
+      const revised = await deps.revise({
         audit,
         preferences,
         currentPlan: current,
         findings: feedback,
         dbCheck: check,
-        catalogCandidates: choices,
+        catalogCandidates: candidates,
+        checklist,
       });
-      tokenInput += improved.tokenUsage.input ?? 0;
-      tokenOutput += improved.tokenUsage.output ?? 0;
+      tokenInput += revised.tokenUsage.input ?? 0;
+      tokenOutput += revised.tokenUsage.output ?? 0;
       const revisedCheck = await deps.checkWithDb(
-        improved.plan,
+        revised.plan,
         audit,
         preferences,
       );
+      validateCatalogSelections(revised.plan, audit, candidates, revisedCheck);
       if (
         isRevisedPlanBetter(
           { plan: current, validation: check.validation },
-          { plan: improved.plan, validation: revisedCheck.validation },
+          { plan: revised.plan, validation: revisedCheck.validation },
         )
       ) {
-        current = improved.plan;
+        current = revised.plan;
         check = revisedCheck;
+        model = revised.model;
         accepted = true;
-        model = improved.model;
         note =
-          "Revision improved validated requirement coverage, credit projection, or scheduling speed.";
+          "Revision improved mandatory course coverage, credit projection or scheduling speed.";
       } else {
-        note =
-          "Revision did not improve validated results; kept the original plan.";
+        note = revisionComparisonNote(
+          { plan: current, validation: check.validation },
+          { plan: revised.plan, validation: revisedCheck.validation },
+        );
       }
     } catch (error) {
-      // No repeated model calls: preserve the first draft with all its warnings.
-      note = `Revision unavailable; kept the original plan. ${error instanceof Error ? error.message : "Unexpected error."}`;
+      // Preserve the initial result rather than making unbounded calls.
+      // Do not echo raw provider/database error details to public users.
+      note = "Revision unavailable; original validated plan retained.";
     }
   }
-
-  const i = lastScheduledTermIndex(current);
-  const last = i >= 0 ? current.semesters[i] : null;
+  const lastIndex = lastScheduledTermIndex(current);
+  const last = lastIndex >= 0 ? current.semesters[lastIndex] : null;
   const status =
     check.validation.graduationCoverage.missing.length > 0
       ? ("requirements_missing" as const)
